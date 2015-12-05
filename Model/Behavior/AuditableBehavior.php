@@ -18,7 +18,7 @@ class AuditableBehavior extends ModelBehavior {
   private static $_request_id = null;
   private function request_id() {
     if (empty(self::$_request_id)) {
-      self::$_request_id = String::uuid();
+      self::$_request_id = CakeText::uuid();
     }
 
     return self::$_request_id;
@@ -112,7 +112,12 @@ class AuditableBehavior extends ModelBehavior {
    * @return  void
    */
   public function afterSave( Model $Model, $created , $options = array() ) {
-    $audit = array( $Model->alias => $this->_getModelData( $Model ) );
+    if (!$modelData=$this->_getModelData($Model)){
+      $this->afterDelete($Model);
+      return true;
+    }
+
+    $audit[$Model->alias] = $modelData;
     $audit[$Model->alias][$Model->primaryKey] = $Model->id;
 
     /*
@@ -125,7 +130,7 @@ class AuditableBehavior extends ModelBehavior {
     $Model->Audit->bindModel(
       array( 'hasMany' => array( 'AuditDelta' ) )
     );
-    
+
     /*
      * If a currentUser() method exists in the model class (or, of
      * course, in a superclass) the call that method to pull all user
@@ -137,7 +142,7 @@ class AuditableBehavior extends ModelBehavior {
     } else if ( $Model->hasMethod( 'current_user' ) ) {
       $source = $Model->current_user();
     }
-    
+
     $data = array(
       'Audit' => array(
         'event'     => $created ? 'CREATE' : 'EDIT',
@@ -269,7 +274,8 @@ class AuditableBehavior extends ModelBehavior {
         'description' => isset( $source['description'] ) ? $source['description'] : null,
       )
     );
-    
+
+
     $this->Audit = ClassRegistry::init( 'Audit' );
     $this->Audit->create();
     $this->Audit->save( $data );
@@ -306,6 +312,11 @@ class AuditableBehavior extends ModelBehavior {
         'conditions' => array( $Model->alias . '.' . $Model->primaryKey => $Model->id )
       )
     );
+
+    //If we are using a SoftDelete behavior, $data will return empty after a delete
+    if (empty($data)){
+      return false;
+    }
 
     $audit_data = array(
       $Model->alias => isset($data[$Model->alias]) ? $data[$Model->alias] : array()
